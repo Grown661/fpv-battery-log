@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#12161f">
+<title>FPV Akku-Logbuch</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<style>
+  :root {
+    --bg: #12161f; --card: #1c2230; --accent: #7c5cff; --text: #e9ecf5;
+    --muted: #8b93a7; --border: #2b3347; --warn: #ffb84d; --danger: #ff6b6b; --ok: #51cf66;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: "Segoe UI", system-ui, sans-serif; background: var(--bg);
+    color: var(--text); min-height: 100vh; padding: 1.5rem 1rem 3rem;
+  }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  h1 { font-size: 1.5rem; margin-bottom: .2rem; }
+  h1 span { color: var(--accent); }
+  .sub { color: var(--muted); margin-bottom: 1.2rem; font-size: .9rem; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 1rem 1.1rem; margin-bottom: 1rem; }
+  .card h2 { font-size: .95rem; color: var(--accent); margin-bottom: .7rem; }
+  form { display: grid; grid-template-columns: 2fr 1fr 1fr 1.4fr auto; gap: .5rem; align-items: end; }
+  @media (max-width: 640px) { form { grid-template-columns: 1fr 1fr; } form button { grid-column: 1 / -1; } }
+  label { font-size: .72rem; color: var(--muted); display: block; margin-bottom: .2rem; }
+  input, select {
+    width: 100%; padding: .5rem .6rem; background: var(--bg); color: var(--text);
+    border: 1px solid var(--border); border-radius: 8px; font-size: .9rem;
+  }
+  input:focus { outline: none; border-color: var(--accent); }
+  button {
+    padding: .55rem .9rem; background: var(--accent); color: #fff; border: none;
+    border-radius: 8px; cursor: pointer; font-size: .88rem; font-weight: 600;
+  }
+  button.ghost { background: var(--bg); color: var(--text); border: 1px solid var(--border); font-weight: 400; }
+  button.ghost:hover { border-color: var(--accent); }
+  button.tiny { padding: .35rem .6rem; font-size: .78rem; }
+  .bat { display: flex; flex-wrap: wrap; gap: .6rem; align-items: center; justify-content: space-between; padding: .8rem 0; border-bottom: 1px solid var(--border); }
+  .bat:last-child { border-bottom: none; }
+  .bat .info { min-width: 180px; }
+  .bat .name { font-weight: 600; }
+  .bat .meta { color: var(--muted); font-size: .8rem; margin-top: .15rem; }
+  .badges { display: flex; gap: .4rem; flex-wrap: wrap; margin-top: .35rem; }
+  .badge { font-size: .72rem; padding: .15rem .55rem; border-radius: 20px; border: 1px solid var(--border); }
+  .badge.warn { color: var(--warn); border-color: var(--warn); }
+  .badge.danger { color: var(--danger); border-color: var(--danger); }
+  .badge.ok { color: var(--ok); border-color: var(--ok); }
+  .actions { display: flex; gap: .4rem; flex-wrap: wrap; }
+  .empty { color: var(--muted); text-align: center; padding: 1.5rem 0; font-size: .9rem; }
+  footer { color: var(--muted); font-size: .78rem; text-align: center; margin-top: 1rem; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>FPV <span>Akku-Logbuch</span></h1>
+  <p class="sub">LiPo-Zyklen tracken, Storage-Termine im Blick behalten. Offline-fähig (PWA).</p>
+
+  <div class="card">
+    <h2>Akku anlegen</h2>
+    <form id="addForm">
+      <div><label>Name</label><input id="fName" placeholder="z.B. Tattu R-Line #1" required></div>
+      <div><label>Zellen</label><select id="fCells"><option>1S</option><option>2S</option><option>3S</option><option selected>4S</option><option>6S</option><option>8S</option></select></div>
+      <div><label>mAh</label><input id="fMah" type="number" value="1300" min="1" required></div>
+      <div><label>Kaufdatum</label><input id="fDate" type="date" required></div>
+      <button type="submit">Anlegen</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>Meine Akkus</h2>
+    <div id="list"></div>
+  </div>
+  <footer>Daten liegen nur lokal im Browser (localStorage).</footer>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  const KEY = "fpv-battery-log-v1";
+  const CYCLE_WARN = 150;       // ab hier Zyklen-Warnung
+  const STORAGE_DAYS = 3;       // voll/leer gelagert: nach X Tagen Warnung
+
+  let batteries = [];
+  try { batteries = JSON.parse(localStorage.getItem(KEY)) || []; } catch (e) {}
+
+  const save = () => { try { localStorage.setItem(KEY, JSON.stringify(batteries)); } catch (e) {} };
+  const $ = (id) => document.getElementById(id);
+  const today = () => new Date().toISOString().slice(0, 10);
+  const daysSince = (iso) => Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);
+
+  document.getElementById("fDate").value = today();
+
+  $("addForm").addEventListener("submit", (e) => {
+    e.preventDefault();
+    batteries.push({
+      id: Date.now(), name: $("fName").value.trim(), cells: $("fCells").value,
+      mah: +$("fMah").value, bought: $("fDate").value,
+      cycles: 0, status: "storage", lastAction: today()
+    });
+    $("fName").value = "";
+    save(); render();
+  });
+
+  function badgeFor(b) {
+    const badges = [];
+    if (b.status === "storage") badges.push('<span class="badge ok">Storage</span>');
+    else {
+      const d = daysSince(b.lastAction);
+      const label = b.status === "voll" ? "Voll geladen" : "Leer";
+      if (d >= STORAGE_DAYS) badges.push(`<span class="badge danger">${label} seit ${d} Tagen – auf Storage legen!</span>`);
+      else badges.push(`<span class="badge warn">${label} (Tag ${d})</span>`);
+    }
+    if (b.cycles >= CYCLE_WARN) badges.push(`<span class="badge danger">${b.cycles} Zyklen – Zustand prüfen</span>`);
+    return badges.join("");
+  }
+
+  function render() {
+    const list = $("list");
+    if (!batteries.length) { list.innerHTML = '<div class="empty">Noch keine Akkus angelegt.</div>'; return; }
+    list.innerHTML = batteries.map((b) => `
+      <div class="bat" data-id="${b.id}">
+        <div class="info">
+          <div class="name">${esc(b.name)}</div>
+          <div class="meta">${b.cells} · ${b.mah} mAh · gekauft ${b.bought} · <strong>${b.cycles} Zyklen</strong></div>
+          <div class="badges">${badgeFor(b)}</div>
+        </div>
+        <div class="actions">
+          <button class="tiny" data-act="fly">Flug +1</button>
+          <button class="tiny ghost" data-act="full">Voll geladen</button>
+          <button class="tiny ghost" data-act="storage">Storage</button>
+          <button class="tiny ghost" data-act="del">✕</button>
+        </div>
+      </div>`).join("");
+  }
+
+  function esc(s) { const d = document.createElement("div"); d.textContent = s; return d.innerHTML; }
+
+  $("list").addEventListener("click", (e) => {
+    const btn = e.target.closest("button[data-act]");
+    if (!btn) return;
+    const id = +btn.closest(".bat").dataset.id;
+    const b = batteries.find((x) => x.id === id);
+    if (!b) return;
+    const act = btn.dataset.act;
+    if (act === "fly") { b.cycles++; b.status = "leer"; b.lastAction = today(); }
+    else if (act === "full") { b.status = "voll"; b.lastAction = today(); }
+    else if (act === "storage") { b.status = "storage"; b.lastAction = today(); }
+    else if (act === "del") {
+      if (!confirm(`"${b.name}" wirklich löschen?`)) return;
+      batteries = batteries.filter((x) => x.id !== id);
+    }
+    save(); render();
+  });
+
+  render();
+
+  if ("serviceWorker" in navigator && location.protocol !== "file:") {
+    navigator.serviceWorker.register("sw.js").catch(() => {});
+  }
+})();
+</script>
+</body>
+</html>

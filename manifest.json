@@ -1,0 +1,12 @@
+{
+  "name": "FPV Akku-Logbuch",
+  "short_name": "AkkuLog",
+  "description": "LiPo-Zyklen und Storage-Termine tracken",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#12161f",
+  "theme_color": "#12161f",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}
