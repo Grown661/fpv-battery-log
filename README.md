@@ -1,5 +1,7 @@
 # FPV Akku-Logbuch
 
+**Live-Demo:** https://grown661.github.io/fpv-battery-log/
+
 LiPo-Akkus sterben an vergessener Lagerung und ungezählten Zyklen – dieses PWA-Logbuch trackt beides, offline und ohne Account.
 
 ## Features
